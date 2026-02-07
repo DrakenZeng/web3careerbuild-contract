@@ -9,9 +9,10 @@ contract DeployCertificateNFT is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         string memory name = vm.envOr("CERTIFICATE_NAME", string("web3 Career Build Certificate"));
         string memory symbol = vm.envOr("CERTIFICATE_SYMBOL", string("WCBC"));
+        address trustedSigner = vm.envOr("MINT_TRUSTED_SIGNER", vm.addr(deployerPrivateKey));
 
         vm.startBroadcast(deployerPrivateKey);
-        certificateNFT = new CertificateNFT(name, symbol);
+        certificateNFT = new CertificateNFT(name, symbol, trustedSigner);
         vm.stopBroadcast();
     }
 }
