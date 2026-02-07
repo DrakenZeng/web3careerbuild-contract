@@ -7,9 +7,10 @@ import {CertificateNFT} from "src/CertificateNFT.sol";
 contract DeployCertificateNFT is Script {
     function run() external returns (CertificateNFT certificateNFT) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        uint256 trustedSignerKey = vm.envUint("MINT_TRUSTED_SIGNER");
         string memory name = vm.envOr("CERTIFICATE_NAME", string("web3 Career Build Certificate"));
         string memory symbol = vm.envOr("CERTIFICATE_SYMBOL", string("WCBC"));
-        address trustedSigner = vm.envOr("MINT_TRUSTED_SIGNER", vm.addr(deployerPrivateKey));
+        address trustedSigner = vm.envOr("MINT_TRUSTED_SIGNER", vm.addr(trustedSignerKey));
 
         vm.startBroadcast(deployerPrivateKey);
         certificateNFT = new CertificateNFT(name, symbol, trustedSigner);
