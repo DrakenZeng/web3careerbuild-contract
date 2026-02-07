@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract BadgeNFT is ERC1155, Ownable {
-
     uint256 private _nextBadgeTypeId;
 
     mapping(string => uint256) public awardIdToBadgeType;
@@ -26,21 +25,18 @@ contract BadgeNFT is ERC1155, Ownable {
     error InvalidAddress();
     error InvalidBadgeType(uint256 badgeTypeId);
 
-    constructor(
-        string memory baseURI_,
-        address initialOwner
-    ) ERC1155(baseURI_) Ownable(initialOwner) {
+    constructor(string memory baseURI_, address initialOwner) ERC1155(baseURI_) Ownable(initialOwner) {
         _nextBadgeTypeId = 1;
     }
 
-    function createBadgeType(string memory name, string memory badgeURI) external onlyOwner returns (uint256 badgeTypeId) {
+    function createBadgeType(string memory name, string memory badgeURI)
+        external
+        onlyOwner
+        returns (uint256 badgeTypeId)
+    {
         badgeTypeId = _nextBadgeTypeId++;
         _badgeURIs[badgeTypeId] = badgeURI;
-        badgeTypes[badgeTypeId] = BadgeType({
-            name: name,
-            uri: badgeURI,
-            exists: true
-        });
+        badgeTypes[badgeTypeId] = BadgeType({name: name, uri: badgeURI, exists: true});
         emit BadgeTypeCreated(badgeTypeId, name, badgeURI);
     }
 
@@ -82,12 +78,7 @@ contract BadgeNFT is ERC1155, Ownable {
         return _nextBadgeTypeId - 1;
     }
 
-    function _update(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory values
-    ) internal override {
+    function _update(address from, address to, uint256[] memory ids, uint256[] memory values) internal override {
         if (from != address(0) && to != address(0)) {
             revert("BadgeNFT: non-transferable");
         }
