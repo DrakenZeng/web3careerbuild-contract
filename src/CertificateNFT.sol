@@ -2,16 +2,15 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {ERC721URIStorage} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
+contract CertificateNFT is ERC721, Ownable, EIP712 {
     struct MintAuthorization {
         address to;
         bytes32 certificateId;
-        string tokenURI;
         uint256 nonce;
         uint256 deadline;
     }
@@ -39,24 +38,31 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
 
     mapping(uint256 => bytes32) public tokenIdToCertificate;
 
-    mapping(address => uint256) public nonces;
     mapping(address => mapping(uint256 => bool)) public usedNonces;
     mapping(bytes32 => bool) public revokedCertificates;
 
     address public trustedSigner;
+    string private _certificateBaseURI;
 
     uint256 private _nextTokenId;
 
     bytes32 private constant MINT_AUTHORIZATION_TYPEHASH =
-        keccak256("MintAuthorization(address to,bytes32 certificateId,string tokenURI,uint256 nonce,uint256 deadline)");
+        keccak256("MintAuthorization(address to,bytes32 certificateId,uint256 nonce,uint256 deadline)");
 
-    constructor(string memory name_, string memory symbol_, address initialOwner, address trustedSigner_)
+    constructor(
+        string memory name_,
+        string memory symbol_,
+        string memory certificateBaseURI_,
+        address initialOwner,
+        address trustedSigner_
+    )
         ERC721(name_, symbol_)
         Ownable(initialOwner)
         EIP712(name_, "1")
     {
         if (trustedSigner_ == address(0)) revert InvalidTrustedSigner();
         trustedSigner = trustedSigner_;
+        _certificateBaseURI = certificateBaseURI_;
         _nextTokenId = 1;
     }
 
@@ -72,7 +78,6 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
         bytes32 certificateId = auth.certificateId;
         uint256 nonce = auth.nonce;
         uint256 deadline = auth.deadline;
-        bytes32 tokenURIHash = keccak256(bytes(auth.tokenURI));
 
         if (to != msg.sender) revert InvalidRecipient();
         if (certificateId == bytes32(0)) revert InvalidCertificateId();
@@ -80,7 +85,7 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
         if (block.timestamp > deadline) revert AuthorizationExpired();
         if (usedNonces[to][nonce]) revert InvalidNonce();
 
-        bytes32 digest = _hashTypedDataV4(_hashMintAuthorization(to, certificateId, tokenURIHash, nonce, deadline));
+        bytes32 digest = _hashTypedDataV4(_hashMintAuthorization(to, certificateId, nonce, deadline));
         address recoveredSigner = ECDSA.recoverCalldata(digest, signature);
         if (recoveredSigner != trustedSigner) revert InvalidSignature();
 
@@ -90,23 +95,17 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
         }
 
         usedNonces[to][nonce] = true;
-        if (nonce >= nonces[to]) {
-            unchecked {
-                nonces[to] = nonce + 1;
-            }
-        }
         certificateToTokenId[certificateId] = tokenId;
         tokenIdToCertificate[tokenId] = certificateId;
 
         _safeMint(to, tokenId);
-        _setTokenURI(tokenId, auth.tokenURI);
 
         emit Minted(to, tokenId, certificateId);
     }
 
     function revokeCertificate(bytes32 certificateId, string calldata reason) external onlyOwner {
-        uint256 tokenId = certificateToTokenId[certificateId];
         if (certificateId == bytes32(0)) revert InvalidCertificateId();
+        uint256 tokenId = certificateToTokenId[certificateId];
         if (tokenId == 0) revert CertificateNotMinted();
         if (revokedCertificates[certificateId]) revert CertificateAlreadyRevoked();
 
@@ -134,20 +133,17 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
         return _nextTokenId - 1;
     }
 
-    function tokenURI(uint256 tokenId) public view override(ERC721, ERC721URIStorage) returns (string memory) {
-        return ERC721URIStorage.tokenURI(tokenId);
+    function certificateBaseURI() external view returns (string memory) {
+        return _certificateBaseURI;
     }
 
-    function supportsInterface(bytes4 interfaceId) public view override(ERC721, ERC721URIStorage) returns (bool) {
-        return super.supportsInterface(interfaceId);
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        _requireOwned(tokenId);
+        return string.concat(_certificateBaseURI, Strings.toHexString(uint256(tokenIdToCertificate[tokenId]), 32));
     }
 
     function hashMintAuthorization(MintAuthorization calldata auth) external view returns (bytes32) {
-        return _hashTypedDataV4(
-            _hashMintAuthorization(
-                auth.to, auth.certificateId, keccak256(bytes(auth.tokenURI)), auth.nonce, auth.deadline
-            )
-        );
+        return _hashTypedDataV4(_hashMintAuthorization(auth.to, auth.certificateId, auth.nonce, auth.deadline));
     }
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
@@ -164,10 +160,9 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
     function _hashMintAuthorization(
         address to,
         bytes32 certificateId,
-        bytes32 tokenURIHash,
         uint256 nonce,
         uint256 deadline
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(MINT_AUTHORIZATION_TYPEHASH, to, certificateId, tokenURIHash, nonce, deadline));
+        return keccak256(abi.encode(MINT_AUTHORIZATION_TYPEHASH, to, certificateId, nonce, deadline));
     }
 }

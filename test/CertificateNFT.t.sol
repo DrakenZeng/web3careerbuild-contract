@@ -3,11 +3,13 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {CertificateNFT} from "src/CertificateNFT.sol";
 
 contract CertificateNFTTest is Test {
     CertificateNFT internal certificate;
 
+    string internal constant BASE_URI = "ipfs://certificate/";
     address internal owner = address(0xA11CE);
     address internal user = address(0xB0B);
     address internal user2 = address(0xCAFE);
@@ -19,27 +21,25 @@ contract CertificateNFTTest is Test {
         signerPk = 0xA11CE;
         signer = vm.addr(signerPk);
         attackerPk = 0xBAD;
-        certificate = new CertificateNFT("Web3 Certificate", "W3CERT", owner, signer);
+        certificate = new CertificateNFT("Web3 Certificate", "W3CERT", BASE_URI, owner, signer);
     }
 
     function test_MintWithSig() public {
         bytes32 certId = keccak256("cert-001");
         uint256 nonce = 0;
         uint256 deadline = block.timestamp + 10 minutes;
-        string memory uri = "ipfs://certificate/1.json";
-        CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
-            to: user, certificateId: certId, tokenURI: uri, nonce: nonce, deadline: deadline
-        });
+        CertificateNFT.MintAuthorization memory auth =
+            CertificateNFT.MintAuthorization({to: user, certificateId: certId, nonce: nonce, deadline: deadline});
         bytes memory signature = _sign(auth, signerPk);
 
         vm.prank(user);
         certificate.mintWithSig(auth, signature);
 
         assertEq(certificate.ownerOf(1), user);
-        assertEq(certificate.tokenURI(1), uri);
+        assertEq(certificate.tokenURI(1), string.concat(BASE_URI, Strings.toHexString(uint256(certId), 32)));
         assertEq(certificate.certificateToTokenId(certId), 1);
         assertEq(certificate.tokenIdToCertificate(1), certId);
-        assertEq(certificate.nonces(user), 1);
+        assertTrue(certificate.usedNonces(user, nonce));
         assertEq(certificate.totalSupply(), 1);
         assertTrue(certificate.isMinted(certId));
     }
@@ -48,7 +48,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: bytes32(0),
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -64,14 +63,12 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth1 = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
         CertificateNFT.MintAuthorization memory auth2 = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/2.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -90,7 +87,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: keccak256("cert-001"),
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp - 1
         });
@@ -105,14 +101,12 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth1 = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: keccak256("cert-001"),
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
         CertificateNFT.MintAuthorization memory auth2 = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: keccak256("cert-002"),
-            tokenURI: "ipfs://certificate/2.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -130,14 +124,12 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth2 = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: keccak256("cert-002"),
-            tokenURI: "ipfs://certificate/2.json",
             nonce: 2,
             deadline: block.timestamp + 10 minutes
         });
         CertificateNFT.MintAuthorization memory auth1 = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: keccak256("cert-001"),
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 1,
             deadline: block.timestamp + 10 minutes
         });
@@ -150,14 +142,14 @@ contract CertificateNFTTest is Test {
         certificate.mintWithSig(auth1, signature1);
         vm.stopPrank();
 
-        assertEq(certificate.nonces(user), 3);
+        assertTrue(certificate.usedNonces(user, 1));
+        assertTrue(certificate.usedNonces(user, 2));
     }
 
     function test_RevertWhen_InvalidSignature() public {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: keccak256("cert-001"),
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -172,7 +164,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: address(0xCAFE),
             certificateId: keccak256("cert-001"),
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 1,
             deadline: block.timestamp + 10 minutes
         });
@@ -188,7 +179,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -207,7 +197,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -227,7 +216,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -246,7 +234,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -273,7 +260,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -295,7 +281,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
@@ -317,7 +302,6 @@ contract CertificateNFTTest is Test {
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
             certificateId: certId,
-            tokenURI: "ipfs://certificate/1.json",
             nonce: 0,
             deadline: block.timestamp + 10 minutes
         });
