@@ -312,6 +312,31 @@ contract CertificateNFTTest is Test {
         certificate.adminTransfer(user, user2, 1, "support-migration-1");
     }
 
+    function test_RevertWhen_OwnerTransferFromRevokedCertificate() public {
+        bytes32 certId = keccak256("cert-001");
+        CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
+            to: user,
+            certificateId: certId,
+            tokenURI: "ipfs://certificate/1.json",
+            nonce: 0,
+            deadline: block.timestamp + 10 minutes
+        });
+        bytes memory signature = _sign(auth, signerPk);
+
+        vm.prank(user);
+        certificate.mintWithSig(auth, signature);
+
+        vm.prank(user);
+        certificate.approve(owner, 1);
+
+        vm.prank(owner);
+        certificate.revokeCertificate(certId, "fraud");
+
+        vm.prank(owner);
+        vm.expectRevert(CertificateNFT.CertificateAlreadyRevoked.selector);
+        certificate.transferFrom(user, user2, 1);
+    }
+
     function test_SetTrustedSigner() public {
         address newSigner = vm.addr(0x1234);
         vm.prank(owner);

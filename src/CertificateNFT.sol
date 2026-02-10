@@ -152,6 +152,9 @@ contract CertificateNFT is ERC721, ERC721URIStorage, Ownable, EIP712 {
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
         address from = _ownerOf(tokenId);
+        if (from != address(0) && to != address(0) && revokedCertificates[tokenIdToCertificate[tokenId]]) {
+            revert CertificateAlreadyRevoked();
+        }
         if (from != address(0) && to != address(0) && _msgSender() != owner()) {
             revert NonTransferable();
         }
