@@ -20,8 +20,9 @@ Web3 Career Build 证书与徽章模块合约库，用于平台证书、徽章 N
   - 官方可通过 `adminTransfer` 执行地址迁移（`onlyOwner`）。
   - 仅支持签名铸造：`mintWithSig`。
   - 通过 `certificateId` 防止重复铸造。
+  - `tokenURI` 采用 `baseURI + certificateId(hex)` 动态计算（不按 token 单独存储 URI）。
   - 支持吊销：`revokeCertificate` / `isRevoked`。
-  - 构造函数支持显式传入 `initialOwner`。
+  - 构造函数支持显式传入 `initialOwner` 与 `certificateBaseURI`。
 
 ## 签名铸造模型
 
@@ -93,10 +94,11 @@ forge test --gas-report --match-path test/BadgeNFT.t.sol
 
 `script/DeployCertificateNFT.s.sol`：
 
-- `MINT_TRUSTED_SIGNER`：证书 mint 签名方（脚本读取）
+- `MINT_TRUSTED_SIGNER_ADDRESS`：证书 mint 签名方地址（脚本读取）
 - `CERTIFICATE_OWNER`（可选，默认部署者地址）
 - `CERTIFICATE_NAME`（可选）
 - `CERTIFICATE_SYMBOL`（可选）
+- `CERTIFICATE_BASE_URI`（可选，默认 `ipfs://certificate/`）
 
 ### 2) 部署 BadgeNFT
 
