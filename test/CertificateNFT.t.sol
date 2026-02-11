@@ -334,6 +334,33 @@ contract CertificateNFTTest is Test {
         certificate.setTrustedSigner(vm.addr(0x1234));
     }
 
+    function test_SetCertificateBaseURI() public {
+        bytes32 certId = keccak256("cert-001");
+        CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
+            to: user,
+            certificateId: certId,
+            nonce: 0,
+            deadline: block.timestamp + 10 minutes
+        });
+        bytes memory signature = _sign(auth, signerPk);
+
+        vm.prank(user);
+        certificate.mintWithSig(auth, signature);
+
+        string memory newBaseURI = "https://metadata.example/cert/";
+        vm.prank(owner);
+        certificate.setCertificateBaseURI(newBaseURI);
+
+        assertEq(certificate.certificateBaseURI(), newBaseURI);
+        assertEq(certificate.tokenURI(1), string.concat(newBaseURI, Strings.toHexString(uint256(certId), 32)));
+    }
+
+    function test_RevertWhen_SetCertificateBaseURIByNonOwner() public {
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        certificate.setCertificateBaseURI("https://metadata.example/cert/");
+    }
+
     function _sign(CertificateNFT.MintAuthorization memory auth, uint256 privateKey)
         internal
         view

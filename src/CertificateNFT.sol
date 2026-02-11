@@ -17,6 +17,7 @@ contract CertificateNFT is ERC721, Ownable, EIP712 {
 
     event Minted(address indexed to, uint256 indexed tokenId, bytes32 indexed certificateId);
     event TrustedSignerUpdated(address indexed previousSigner, address indexed newSigner);
+    event CertificateBaseURIUpdated(string previousBaseURI, string newBaseURI);
     event CertificateRevoked(bytes32 indexed certificateId, uint256 indexed tokenId, string reason);
     event AdminTransfer(
         address indexed operator, address indexed from, address indexed to, uint256 tokenId, string requestId
@@ -71,6 +72,12 @@ contract CertificateNFT is ERC721, Ownable, EIP712 {
         address previousSigner = trustedSigner;
         trustedSigner = trustedSigner_;
         emit TrustedSignerUpdated(previousSigner, trustedSigner_);
+    }
+
+    function setCertificateBaseURI(string calldata certificateBaseURI_) external onlyOwner {
+        string memory previousBaseURI = _certificateBaseURI;
+        _certificateBaseURI = certificateBaseURI_;
+        emit CertificateBaseURIUpdated(previousBaseURI, certificateBaseURI_);
     }
 
     function mintWithSig(MintAuthorization calldata auth, bytes calldata signature) external {
