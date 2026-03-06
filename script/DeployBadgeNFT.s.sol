@@ -7,10 +7,9 @@ import {BadgeNFT} from "src/BadgeNFT.sol";
 contract DeployBadgeNFT is Script {
     function run() external returns (BadgeNFT badgeNFT) {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        uint256 trustedSignerKey = vm.envUint("BADGE_MINT_TRUSTED_SIGNER");
         address initialOwner = vm.envOr("BADGE_OWNER", vm.addr(deployerPrivateKey));
         string memory baseURI = vm.envOr("BADGE_BASE_URI", string("ipfs://badge-default/{id}.json"));
-        address trustedSigner = vm.envOr("BADGE_MINT_TRUSTED_SIGNER", vm.addr(trustedSignerKey));
+        address trustedSigner = vm.envAddress("MINT_TRUSTED_SIGNER_ADDRESS");
 
         vm.startBroadcast(deployerPrivateKey);
         badgeNFT = new BadgeNFT(baseURI, initialOwner, trustedSigner);
