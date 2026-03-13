@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {CertificateNFT} from "src/CertificateNFT.sol";
@@ -11,17 +12,23 @@ contract CertificateNFTTest is Test {
 
     string internal constant BASE_URI = "ipfs://certificate/";
     address internal owner = address(0xA11CE);
+    address internal operator = address(0x0DE8A708);
     address internal user = address(0xB0B);
     address internal user2 = address(0xCAFE);
     uint256 internal signerPk;
     address internal signer;
     uint256 internal attackerPk;
 
+    bytes32 internal constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+
     function setUp() public {
         signerPk = 0xA11CE;
         signer = vm.addr(signerPk);
         attackerPk = 0xBAD;
         certificate = new CertificateNFT("Web3 Certificate", "W3CERT", BASE_URI, owner, signer);
+
+        vm.prank(owner);
+        certificate.grantRole(OPERATOR_ROLE, operator);
     }
 
     function test_MintWithSig() public {
@@ -205,13 +212,13 @@ contract CertificateNFTTest is Test {
         vm.prank(user);
         certificate.mintWithSig(auth, signature);
 
-        vm.prank(owner);
+        vm.prank(operator);
         certificate.adminTransfer(user, user2, 1, "support-migration-1");
 
         assertEq(certificate.ownerOf(1), user2);
     }
 
-    function test_RevertWhen_AdminTransferByNonOwner() public {
+    function test_RevertWhen_AdminTransferByNonOperator() public {
         bytes32 certId = keccak256("cert-001");
         CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
             to: user,
@@ -225,7 +232,9 @@ contract CertificateNFTTest is Test {
         certificate.mintWithSig(auth, signature);
 
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user, OPERATOR_ROLE)
+        );
         certificate.adminTransfer(user, user2, 1, "support-migration-1");
     }
 
@@ -242,7 +251,7 @@ contract CertificateNFTTest is Test {
         vm.prank(user);
         certificate.mintWithSig(auth, signature);
 
-        vm.prank(owner);
+        vm.prank(operator);
         certificate.revokeCertificate(certId, "fraud");
 
         assertTrue(certificate.isRevoked(certId));
@@ -250,7 +259,7 @@ contract CertificateNFTTest is Test {
 
     function test_RevertWhen_RevokeNonMintedCertificate() public {
         bytes32 certId = keccak256("cert-999");
-        vm.prank(owner);
+        vm.prank(operator);
         vm.expectRevert(CertificateNFT.CertificateNotMinted.selector);
         certificate.revokeCertificate(certId, "invalid");
     }
@@ -268,10 +277,10 @@ contract CertificateNFTTest is Test {
         vm.prank(user);
         certificate.mintWithSig(auth, signature);
 
-        vm.prank(owner);
+        vm.prank(operator);
         certificate.revokeCertificate(certId, "fraud");
 
-        vm.prank(owner);
+        vm.prank(operator);
         vm.expectRevert(CertificateNFT.CertificateAlreadyRevoked.selector);
         certificate.revokeCertificate(certId, "fraud-again");
     }
@@ -289,10 +298,10 @@ contract CertificateNFTTest is Test {
         vm.prank(user);
         certificate.mintWithSig(auth, signature);
 
-        vm.prank(owner);
+        vm.prank(operator);
         certificate.revokeCertificate(certId, "fraud");
 
-        vm.prank(owner);
+        vm.prank(operator);
         vm.expectRevert(CertificateNFT.CertificateAlreadyRevoked.selector);
         certificate.adminTransfer(user, user2, 1, "support-migration-1");
     }
@@ -319,6 +328,26 @@ contract CertificateNFTTest is Test {
         vm.prank(owner);
         vm.expectRevert(CertificateNFT.CertificateAlreadyRevoked.selector);
         certificate.transferFrom(user, user2, 1);
+    }
+
+    function test_RevertWhen_RevokeCertificateByNonOperator() public {
+        bytes32 certId = keccak256("cert-001");
+        CertificateNFT.MintAuthorization memory auth = CertificateNFT.MintAuthorization({
+            to: user,
+            certificateId: certId,
+            nonce: 0,
+            deadline: block.timestamp + 10 minutes
+        });
+        bytes memory signature = _sign(auth, signerPk);
+
+        vm.prank(user);
+        certificate.mintWithSig(auth, signature);
+
+        vm.prank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, user, OPERATOR_ROLE)
+        );
+        certificate.revokeCertificate(certId, "fraud");
     }
 
     function test_SetTrustedSigner() public {
@@ -359,6 +388,18 @@ contract CertificateNFTTest is Test {
         vm.prank(user);
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, user));
         certificate.setCertificateBaseURI("https://metadata.example/cert/");
+    }
+
+    function test_GrantAndRevokeOperatorRole() public {
+        address newOperator = address(0xBEE);
+
+        vm.prank(owner);
+        certificate.grantRole(OPERATOR_ROLE, newOperator);
+        assertTrue(certificate.hasRole(OPERATOR_ROLE, newOperator));
+
+        vm.prank(owner);
+        certificate.revokeRole(OPERATOR_ROLE, newOperator);
+        assertFalse(certificate.hasRole(OPERATOR_ROLE, newOperator));
     }
 
     function _sign(CertificateNFT.MintAuthorization memory auth, uint256 privateKey)

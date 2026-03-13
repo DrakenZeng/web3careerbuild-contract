@@ -2,12 +2,15 @@
 pragma solidity ^0.8.24;
 
 import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 
-contract CertificateNFT is ERC721, Ownable, EIP712 {
+contract CertificateNFT is ERC721, AccessControl, Ownable, EIP712 {
+    bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+
     struct MintAuthorization {
         address to;
         bytes32 certificateId;
@@ -65,6 +68,8 @@ contract CertificateNFT is ERC721, Ownable, EIP712 {
         trustedSigner = trustedSigner_;
         _certificateBaseURI = certificateBaseURI_;
         _nextTokenId = 1;
+        _grantRole(DEFAULT_ADMIN_ROLE, initialOwner);
+        _grantRole(OPERATOR_ROLE, initialOwner);
     }
 
     function setTrustedSigner(address trustedSigner_) external onlyOwner {
@@ -110,7 +115,7 @@ contract CertificateNFT is ERC721, Ownable, EIP712 {
         emit Minted(to, tokenId, certificateId);
     }
 
-    function revokeCertificate(bytes32 certificateId, string calldata reason) external onlyOwner {
+    function revokeCertificate(bytes32 certificateId, string calldata reason) external onlyRole(OPERATOR_ROLE) {
         if (certificateId == bytes32(0)) revert InvalidCertificateId();
         uint256 tokenId = certificateToTokenId[certificateId];
         if (tokenId == 0) revert CertificateNotMinted();
@@ -124,7 +129,10 @@ contract CertificateNFT is ERC721, Ownable, EIP712 {
         return revokedCertificates[certificateId];
     }
 
-    function adminTransfer(address from, address to, uint256 tokenId, string calldata requestId) external onlyOwner {
+    function adminTransfer(address from, address to, uint256 tokenId, string calldata requestId)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
         if (from == address(0) || to == address(0)) revert InvalidAddress();
         bytes32 certificateId = tokenIdToCertificate[tokenId];
         if (revokedCertificates[certificateId]) revert CertificateAlreadyRevoked();
@@ -158,10 +166,14 @@ contract CertificateNFT is ERC721, Ownable, EIP712 {
         if (from != address(0) && to != address(0) && revokedCertificates[tokenIdToCertificate[tokenId]]) {
             revert CertificateAlreadyRevoked();
         }
-        if (from != address(0) && to != address(0) && _msgSender() != owner()) {
+        if (from != address(0) && to != address(0) && _msgSender() != owner() && !hasRole(OPERATOR_ROLE, _msgSender())) {
             revert NonTransferable();
         }
         return super._update(to, tokenId, auth);
+    }
+
+    function supportsInterface(bytes4 interfaceId) public view override(ERC721, AccessControl) returns (bool) {
+        return super.supportsInterface(interfaceId);
     }
 
     function _hashMintAuthorization(
